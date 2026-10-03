@@ -316,13 +316,14 @@ export class Api {
                 }
             })
             .on(OPEN_VLC_PLAYER, (event, { url }) => {
-                const proc = child_process.spawn(
-                    this.getVlcPath(),
-                    [`"${url as string}"`],
-                    {
-                        shell: true,
-                    }
-                );
+                // Don't run this through a shell. With `shell: true` on Windows
+                // the command line is parsed by cmd.exe, which breaks on the space
+                // in the default install path (`C:\Program Files\VideoLAN\VLC
+                // \vlc.exe` resolves to `C:\Program` and fails) and would also
+                // treat the `&` found in many stream URLs as a command separator.
+                // Passing the arguments as an array keeps them intact on every
+                // platform without any manual quoting.
+                const proc = child_process.spawn(this.getVlcPath(), [url as string]);
 
                 proc.on('exit', (code) => {
                     // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
@@ -1139,8 +1140,15 @@ export class Api {
 
     getVlcPath() {
         const customVlcPath = this.store.get(VLC_PLAYER_PATH);
+
+        // The path is entered by hand in the settings, so it often arrives wrapped
+        // in double quotes (that is what Explorer's "Copy as path" produces, and it
+        // used to be required because the value was passed through a shell).
+        // Strip them here so the value is always a plain filesystem path.
         if (customVlcPath) {
-            return customVlcPath;
+            return String(customVlcPath)
+                .trim()
+                .replace(/^"(.*)"$/, '$1');
         } else {
             return this.getDefaultVlcPath();
         }
